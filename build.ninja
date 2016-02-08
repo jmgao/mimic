@@ -1,0 +1,21 @@
+builddir = build
+cxx = g++
+ar = ar
+ld = ld
+cxxflags = -std=c++14 -Isrc -Os -Wall -Wextra -fdiagnostics-color -I/usr/include/libusb-1.0
+
+rule cxx
+  command = $cxx -MMD -MT $out -MF $out.d $cxxflags -c $in -o $out
+  description = CXX $out
+  depfile = $out.d
+
+rule link
+  command = $cxx $ldflags -o $out $in $libs
+  description = LINK $out
+
+build $builddir/aha.o: cxx src/aha.cpp
+
+build aha: link $builddir/aha.o
+  libs = -lusb-1.0
+
+default aha
