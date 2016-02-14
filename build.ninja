@@ -13,9 +13,10 @@ rule link
   command = $cxx $ldflags -o $out $in $libs
   description = LINK $out
 
-build $builddir/aha.o: cxx src/aha.cpp
+build $builddir/aoa.o: cxx src/aoa.cpp
+build $builddir/main.o: cxx src/main.cpp
 
-build aha: link $builddir/aha.o
+build aha: link $builddir/aoa.o $builddir/main.o
   libs = -lusb-1.0
 
 default aha
