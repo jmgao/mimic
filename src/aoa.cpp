@@ -39,10 +39,10 @@ constexpr int AOA_STRING_URI = 4;
 constexpr int AOA_STRING_SERIAL = 5;
 
 constexpr char MANUFACTURER[] = "jmgao";
-constexpr char MODEL[] = "aha";
-constexpr char DESCRIPTION[] = "Android Host Audio";
+constexpr char MODEL[] = "mimic";
+constexpr char DESCRIPTION[] = "Android USB mirror";
 constexpr char VERSION[] = "0.0.1";
-constexpr char URI[] = "https://insolit.us/aha";
+constexpr char URI[] = "https://insolit.us/mimic";
 constexpr char SERIAL[] = "0";
 
 static void usb_error(int error) {

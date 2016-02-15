@@ -16,7 +16,7 @@ rule link
 build $builddir/aoa.o: cxx src/aoa.cpp
 build $builddir/main.o: cxx src/main.cpp
 
-build aha: link $builddir/aoa.o $builddir/main.o
+build mimic: link $builddir/aoa.o $builddir/main.o
   libs = -lusb-1.0 -lc++ -pthread
 
-default aha
+default mimic
