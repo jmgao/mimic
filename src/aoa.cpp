@@ -2,8 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <mutex>
@@ -43,7 +46,7 @@ constexpr char URI[] = "https://insolit.us/aha";
 constexpr char SERIAL[] = "0";
 
 static void usb_error(int error) {
-  fprintf(stderr, "error: %s\n", libusb_error_name(error));
+  error("%s", libusb_error_name(error));
 };
 
 static bool aoa_initialize(libusb_device_handle* handle, AOAMode mode) {
@@ -62,7 +65,7 @@ static bool aoa_initialize(libusb_device_handle* handle, AOAMode mode) {
   uint32_t aoa_version;
   memcpy(&aoa_version, aoa_version_buf, sizeof(aoa_version_buf));
   if (aoa_version != 2) {
-    fprintf(stderr, "error: unsupported AOA protocol version %" PRIu32 "\n", aoa_version);
+    error("unsupported AOA protocol version %" PRIu32, aoa_version);
     return false;
   }
 
@@ -136,7 +139,7 @@ static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
       }
 
       if (descriptor.idVendor == VID_GOOGLE) {
-        printf("found %#X\n", descriptor.idProduct);
+        info("found device with VID %d", descriptor.idVendor);
         auto it = std::find(accepted_pids.cbegin(), accepted_pids.cend(), descriptor.idProduct);
         if (it != accepted_pids.cend()) {
           libusb_device_handle* handle;
@@ -148,7 +151,7 @@ static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
           }
           return handle;
         } else {
-          printf("failed to match\n");
+          info("failed to match device to accepted PIDs");
         }
       }
     }
@@ -156,7 +159,7 @@ static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
     std::this_thread::sleep_for(10ms);
   }
 
-  fprintf(stderr, "timeout elapsed while waiting for device\n");
+  error("timeout elapsed while waiting for device");
   return nullptr;
 }
 
@@ -179,24 +182,24 @@ AOADevice::~AOADevice() {
 
 bool AOADevice::initialize() {
   if (libusb_claim_interface(handle, 0) != 0) {
-    fprintf(stderr, "failed to claim interface\n");
+    error("failed to claim interface");
     return false;
   }
 
   if (!aoa_initialize(handle, mode)) {
-    fprintf(stderr, "failed to initialize android accessory\n");
+    error("failed to initialize android accessory");
     return false;
   };
 
   if ((mode & AOAMode::audio) == AOAMode::audio) {
     if (!aoa_enable_audio(handle)) {
-      fprintf(stderr, "failed to enable USB audio\n");
+      error("failed to enable USB audio");
       return false;
     }
   }
 
   if (!aoa_start(handle)) {
-    fprintf(stderr, "failed to start android accessory\n");
+    error("failed to start android accessory");
     return false;
   }
 
@@ -207,6 +210,12 @@ bool AOADevice::initialize() {
 
   if (!handle) {
     return false;
+  }
+
+  if ((mode & AOAMode::accessory) == AOAMode::accessory) {
+    if (!spawn_accessory_threads()) {
+      return false;
+    }
   }
   return true;
 }
@@ -225,4 +234,79 @@ std::unique_ptr<AOADevice> AOADevice::open(AOAMode mode) {
 
   std::unique_ptr<AOADevice> device(new AOADevice(handle, mode));
   return std::move(device);
+}
+
+bool AOADevice::spawn_accessory_threads() {
+  int sfd[2];
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, sfd) != 0) {
+    fprintf(stderr, "failed to create socketpair: %s\n", strerror(errno));
+    return false;
+  }
+
+  internal_socket = sfd[0];
+  external_socket = sfd[1];
+
+  constexpr int read_endpoint = 0x81;
+  constexpr int write_endpoint = 0x02;
+  auto read_function = [this]() {
+    while (true) {
+      unsigned char buffer[16384];
+      int transferred;
+      int rc = libusb_bulk_transfer(handle, 0x81, buffer, sizeof(buffer), &transferred, 0);
+      if (rc != 0) {
+        usb_error(rc);
+        abort();
+      }
+
+      debug("transferring %d bytes from usb to local", transferred);
+      const char* current = reinterpret_cast<char*>(buffer);
+      while (transferred > 0) {
+        ssize_t written = write(internal_socket, current, transferred);
+        if (written < 0) {
+          error("write failed: %s", strerror(errno));
+          abort();
+        } else if (written == 0) {
+          error("write returned EOF");
+          abort();
+        }
+
+        current += written;
+        transferred -= written;
+      }
+    }
+  };
+
+  auto write_function = [this]() {
+    while (true) {
+      char buffer[16384];
+      ssize_t bytes_read = read(internal_socket, buffer, sizeof(buffer));
+      if (bytes_read < 0) {
+        error("read failed: %s", strerror(errno));
+        abort();
+      }
+
+      debug("transferring %zd bytes from local to usb", bytes_read);
+      unsigned char* current = reinterpret_cast<unsigned char*>(buffer);
+      while (bytes_read > 0) {
+        int transferred;
+        int rc = libusb_bulk_transfer(handle, 0x02, current, bytes_read, &transferred, 0);
+        if (rc != 0) {
+          usb_error(rc);
+          abort();
+        }
+
+        if (transferred <= 0) {
+          error("libusb_bulk_transfer transferred %d bytes", transferred);
+        }
+
+        current += transferred;
+        bytes_read -= transferred;
+      }
+    }
+  };
+
+  read_thread = std::thread(read_function);
+  write_thread = std::thread(write_function);
+
+  return true;
 }

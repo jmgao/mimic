@@ -1,8 +1,8 @@
 builddir = build
-cxx = g++
+cxx = clang++-3.6
 ar = ar
 ld = ld
-cxxflags = -std=c++14 -Isrc -Os -Wall -Wextra -fdiagnostics-color -I/usr/include/libusb-1.0
+cxxflags = -std=c++14 -stdlib=libc++ -Isrc -Os -Wall -Wextra -fdiagnostics-color -I/usr/include/libusb-1.0 -g -pthread
 
 rule cxx
   command = $cxx -MMD -MT $out -MF $out.d $cxxflags -c $in -o $out
@@ -17,6 +17,6 @@ build $builddir/aoa.o: cxx src/aoa.cpp
 build $builddir/main.o: cxx src/main.cpp
 
 build aha: link $builddir/aoa.o $builddir/main.o
-  libs = -lusb-1.0
+  libs = -lusb-1.0 -lc++ -pthread
 
 default aha
