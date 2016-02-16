@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <gst/gst.h>
+
 #include "aoa.h"
 
 int main(int argc, char* argv[]) {
@@ -17,17 +19,25 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  int fd = open("test.h264", O_CREAT | O_TRUNC | O_RDWR, 0700);
-  while (true) {
-    char buf[16385];
-    ssize_t rc = read(device->get_accessory_fd(), buf, sizeof(buf) - 1);
-    if (rc < 0) {
-      error("local read failed: %s", strerror(errno));
-      return 1;
-    }
-    buf[rc] = '\0';
-    printf("read %zd bytes\n", rc);
-    write(fd, buf, rc);
-    fsync(fd);
+  int accessory_fd = device->get_accessory_fd();
+
+  // Play the stream.
+  GstElement *pipeline;
+  GstBus *bus;
+  GstMessage *msg;
+  gst_init(nullptr, nullptr);
+  dup2(accessory_fd, 123);
+
+  pipeline = gst_parse_launch("fdsrc fd=123 ! h264parse ! avdec_h264 ! autovideosink sync=false", nullptr);
+  gst_element_set_state(pipeline, GST_STATE_PLAYING);
+  bus = gst_element_get_bus(pipeline);
+  msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GstMessageType(GST_MESSAGE_ERROR | GST_MESSAGE_EOS));
+
+  if (msg) {
+    gst_message_unref(msg);
   }
+  gst_object_unref(bus);
+  gst_element_set_state(pipeline, GST_STATE_NULL);
+  gst_object_unref(pipeline);
+  return 0;
 }
