@@ -252,7 +252,7 @@ bool AOADevice::spawn_accessory_threads() {
     while (true) {
       unsigned char buffer[16384];
       int transferred;
-      int rc = libusb_bulk_transfer(handle, 0x81, buffer, sizeof(buffer), &transferred, 0);
+      int rc = libusb_bulk_transfer(handle, read_endpoint, buffer, sizeof(buffer), &transferred, 0);
       if (rc != 0) {
         usb_error(rc);
         abort();
@@ -289,7 +289,7 @@ bool AOADevice::spawn_accessory_threads() {
       unsigned char* current = reinterpret_cast<unsigned char*>(buffer);
       while (bytes_read > 0) {
         int transferred;
-        int rc = libusb_bulk_transfer(handle, 0x02, current, bytes_read, &transferred, 0);
+        int rc = libusb_bulk_transfer(handle, write_endpoint, current, bytes_read, &transferred, 0);
         if (rc != 0) {
           usb_error(rc);
           abort();
