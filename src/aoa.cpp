@@ -18,8 +18,7 @@
 
 #include "aoa.h"
 #include "auto.h"
-
-using namespace std::chrono;
+#include "chrono_literals.h"
 
 constexpr int VID_GOOGLE = 0x18D1;
 constexpr int PID_HAMMERHEAD = 0x4EE2;
@@ -65,7 +64,7 @@ static bool aoa_initialize(libusb_device_handle* handle, AOAMode mode) {
   uint16_t aoa_version;
   memcpy(&aoa_version, aoa_version_buf, sizeof(aoa_version_buf));
   if (aoa_version != 2) {
-    error("unsupported AOA protocol version %" PRIu32, aoa_version);
+    error("unsupported AOA protocol version %u", aoa_version);
     return false;
   }
 
@@ -114,7 +113,7 @@ static bool aoa_start(libusb_device_handle* handle) {
 }
 
 static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
-                                                 milliseconds timeout) {
+                                                 std::chrono::milliseconds timeout) {
   int rc;
   auto start = std::chrono::steady_clock::now();
 
@@ -224,7 +223,6 @@ std::unique_ptr<AOADevice> AOADevice::open(AOAMode mode) {
   static std::once_flag once;
   std::call_once(once, []() {
     libusb_init(nullptr);
-    libusb_set_debug(nullptr, LIBUSB_LOG_LEVEL_WARNING);
   });
 
   libusb_device_handle* handle = open_device_timeout({ PID_HAMMERHEAD, PID_ANGLER }, 100ms);
