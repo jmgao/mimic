@@ -1,0 +1,3 @@
+[submodule "m3-toolchain"]
+	path = m3-toolchain
+	url = git@github.com:jmgao/m3-toolchain.git
