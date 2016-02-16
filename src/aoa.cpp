@@ -50,7 +50,7 @@ static void usb_error(int error) {
 };
 
 static bool aoa_initialize(libusb_device_handle* handle, AOAMode mode) {
-  unsigned char aoa_version_buf[4];
+  unsigned char aoa_version_buf[2] = {};
   int rc;
 
   // https://source.android.com/devices/accessories/aoa.html
@@ -62,7 +62,7 @@ static bool aoa_initialize(libusb_device_handle* handle, AOAMode mode) {
     return false;
   }
 
-  uint32_t aoa_version;
+  uint16_t aoa_version;
   memcpy(&aoa_version, aoa_version_buf, sizeof(aoa_version_buf));
   if (aoa_version != 2) {
     error("unsupported AOA protocol version %" PRIu32, aoa_version);
