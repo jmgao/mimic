@@ -139,7 +139,7 @@ static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
       }
 
       if (descriptor.idVendor == VID_GOOGLE) {
-        info("found device with VID %d", descriptor.idVendor);
+        info("found device with VID %#x", descriptor.idVendor);
         auto it = std::find(accepted_pids.cbegin(), accepted_pids.cend(), descriptor.idProduct);
         if (it != accepted_pids.cend()) {
           libusb_device_handle* handle;
