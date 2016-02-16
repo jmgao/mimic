@@ -63,7 +63,7 @@ static int exec_gstreamer(int accessory_fd) {
     dup2(accessory_fd, STDIN_FILENO);
 #ifdef M3_CROSS
     execlp("gst-launch", "gst-launch", "fdsrc", "!",
-           "video/x-h264,width=1920,height=1080,framerate=60/1", "!", "vpudec", "!", "mfw_v4lsink",
+           "video/x-h264,width=800,height=480,framerate=60/1", "!", "vpudec", "!", "mfw_v4lsink",
            "sync=false", nullptr);
 #else
     execlp("gst-launch-1.0", "gst-launch-1.0", "fdsrc", "!", "h264parse", "!", "avdec_h264", "!",

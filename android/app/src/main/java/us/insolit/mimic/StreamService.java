@@ -45,15 +45,15 @@ public class StreamService extends Service {
     }
 
     private int getWidth() {
-        return 1920;
+        return 800;
     }
 
     private int getHeight() {
-        return 1080;
+        return 480;
     }
 
     private int getDPI() {
-        return 320;
+        return 120;
     }
 
     @Override
@@ -178,7 +178,7 @@ public class StreamService extends Service {
         // Set some required properties. The media codec may fail if these aren't defined.
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 0);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, 10 * 1024 * 1024);
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 8 * 1024 * 1024);
         format.setInteger(MediaFormat.KEY_FRAME_RATE, 60);
         format.setInteger(MediaFormat.KEY_CAPTURE_RATE, 60);
         format.setInteger(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1000000 / 60);
