@@ -10,6 +10,9 @@ if(M3_CROSS)
   set(CMAKE_C_COMPILER "${CMAKE_SOURCE_DIR}/m3-toolchain/bin/arm-cortexa9_neon-linux-gnueabi-gcc")
   set(CMAKE_CXX_COMPILER "${CMAKE_SOURCE_DIR}/m3-toolchain/bin/arm-cortexa9_neon-linux-gnueabi-g++")
   set(ENV{PKG_CONFIG_SYSROOT_DIR} "${CMAKE_SOURCE_DIR}/m3-toolchain/arm-cortexa9_neon-linux-gnueabi/sysroot")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DM3_CROSS")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DM3_CROSS")
+  set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
 else()
   set(CMAKE_C_COMPILER "clang-3.6")
   set(CMAKE_CXX_COMPILER "clang++-3.6")
@@ -19,7 +22,9 @@ endif()
 
 find_package(PkgConfig)
 pkg_search_module(LIBUSB REQUIRED libusb-1.0)
+if(NOT M3_CROSS)
 pkg_search_module(GSTREAMER REQUIRED gstreamer-1.0)
+endif()
 
 link_directories(
   ${LIBUSB_LIBRARY_DIRS}

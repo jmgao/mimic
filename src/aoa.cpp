@@ -1,3 +1,4 @@
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -155,7 +156,7 @@ static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
       }
     }
 
-    std::this_thread::sleep_for(10ms);
+    std::this_thread::sleep_for(1s);
   }
 
   error("timeout elapsed while waiting for device");
@@ -180,11 +181,6 @@ AOADevice::~AOADevice() {
 }
 
 bool AOADevice::initialize() {
-  if (libusb_claim_interface(handle, 0) != 0) {
-    error("failed to claim interface");
-    return false;
-  }
-
   if (!aoa_initialize(handle, mode)) {
     error("failed to initialize android accessory");
     return false;
@@ -253,7 +249,7 @@ bool AOADevice::spawn_accessory_threads() {
       int rc = libusb_bulk_transfer(handle, read_endpoint, buffer, sizeof(buffer), &transferred, 0);
       if (rc != 0) {
         usb_error(rc);
-        abort();
+        exit(1);
       }
 
       debug("transferring %d bytes from usb to local", transferred);
@@ -262,10 +258,10 @@ bool AOADevice::spawn_accessory_threads() {
         ssize_t written = write(internal_socket, current, transferred);
         if (written < 0) {
           error("write failed: %s", strerror(errno));
-          abort();
+          exit(1);
         } else if (written == 0) {
           error("write returned EOF");
-          abort();
+          exit(1);
         }
 
         current += written;
@@ -280,7 +276,7 @@ bool AOADevice::spawn_accessory_threads() {
       ssize_t bytes_read = read(internal_socket, buffer, sizeof(buffer));
       if (bytes_read < 0) {
         error("read failed: %s", strerror(errno));
-        abort();
+        exit(1);
       }
 
       debug("transferring %zd bytes from local to usb", bytes_read);
@@ -290,7 +286,7 @@ bool AOADevice::spawn_accessory_threads() {
         int rc = libusb_bulk_transfer(handle, write_endpoint, current, bytes_read, &transferred, 0);
         if (rc != 0) {
           usb_error(rc);
-          abort();
+          exit(1);
         }
 
         if (transferred <= 0) {
