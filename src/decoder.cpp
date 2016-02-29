@@ -31,6 +31,7 @@ void create_decoder(int h264_fd, decoder_callback_t callback) {
   callbacks.new_sample = [](GstAppSink* sink, gpointer callback) {
     GstSample* sample = gst_app_sink_pull_sample(sink);
     reinterpret_cast<decoder_callback_t>(callback)(sample);
+    gst_sample_unref(sample);
     return GST_FLOW_OK;
   };
   gst_app_sink_set_callbacks(reinterpret_cast<GstAppSink*>(appsink), &callbacks,
