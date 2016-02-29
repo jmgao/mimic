@@ -8,3 +8,8 @@
 #define info(fmt, ...) _log(fmt, "info: ", ##__VA_ARGS__)
 #define warn(fmt, ...) _log(fmt, "warning: ", ##__VA_ARGS__)
 #define error(fmt, ...) _log(fmt, "error: ", ##__VA_ARGS__)
+#define fatal(fmt, ...)       \
+  do {                        \
+    error(fmt, ##__VA_ARGS__); \
+    exit(1);                  \
+  } while (0)
