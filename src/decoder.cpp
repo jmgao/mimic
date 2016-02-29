@@ -8,6 +8,7 @@
 #include "log.h"
 
 void create_decoder(int h264_fd, decoder_callback_t callback) {
+  constexpr bool convert_rgb = true;
   GstElement* pipeline = gst_pipeline_new("mimic-video");
   GstElement* fdsrc = gst_element_factory_make("fdsrc", "mimic-video-fdsrc");
   g_object_set(fdsrc, "fd", h264_fd, nullptr);
@@ -18,8 +19,11 @@ void create_decoder(int h264_fd, decoder_callback_t callback) {
   gst_video_decoder_set_output_state(reinterpret_cast<GstVideoDecoder*>(avdec_h264),
                                      GST_VIDEO_FORMAT_RGB, 800, 480, nullptr);
 
+  GstElement* videoconvert = gst_element_factory_make("videoconvert", "videoconvert");
+
   GstElement* capsfilter = gst_element_factory_make("capsfilter", "mimic-video-capsfilter");
-  GstCaps* caps = gst_caps_from_string("video/x-raw,format=I420");
+  const char* format = convert_rgb ? "video/x-raw,format=RGB" : "video/x-raw,format=I420";
+  GstCaps* caps = gst_caps_from_string(format);
   g_object_set(capsfilter, "caps", caps, nullptr);
 
   GstElement* appsink = gst_element_factory_make("appsink", "mimic-video-appsink");
@@ -37,7 +41,8 @@ void create_decoder(int h264_fd, decoder_callback_t callback) {
     exit(1);
   }
 
-  gst_bin_add_many(GST_BIN(pipeline), fdsrc, parser, avdec_h264, capsfilter, appsink, nullptr);
-  gst_element_link_many(fdsrc, parser, avdec_h264, capsfilter, appsink, nullptr);
+  gst_bin_add_many(GST_BIN(pipeline), fdsrc, parser, avdec_h264, videoconvert, capsfilter, appsink,
+                   nullptr);
+  gst_element_link_many(fdsrc, parser, avdec_h264, videoconvert, capsfilter, appsink, nullptr);
   gst_element_set_state(pipeline, GST_STATE_PLAYING);
 }
