@@ -25,18 +25,27 @@ pkg_search_module(LIBUSB REQUIRED libusb-1.0)
 if(NOT M3_CROSS)
 pkg_search_module(GSTREAMER REQUIRED gstreamer-1.0)
 pkg_search_module(WAYLAND_CLIENT wayland-client)
+pkg_search_module(WAYLAND_EGL wayland-egl)
+pkg_search_module(EGL egl)
+pkg_search_module(GLES2 glesv2)
 endif()
 
 link_directories(
   ${LIBUSB_LIBRARY_DIRS}
   ${GSTREAMER_LIBRARY_DIRS}
   ${WAYLAND_CLIENT_LIBRARY_DIRS}
+  ${WAYLAND_EGL_LIBRARY_DIRS}
+  ${EGL_LIBRARY_DIRS}
+  ${GLES2_LIBRARY_DIRS}
 )
 
 include_directories(
   ${LIBUSB_INCLUDE_DIRS}
   ${GSTREAMER_INCLUDE_DIRS}
   ${WAYLAND_CLIENT_INCLUDE_DIRS}
+  ${WAYLAND_EGL_INCLUDE_DIRS}
+  ${EGL_INCLUDE_DIRS}
+  ${GLES2_INCLUDE_DIRS}
 )
 
 add_executable(
@@ -63,9 +72,14 @@ target_link_libraries(
   mimic_wayland
   pthread
   ${LIBUSB_LIBRARIES}
+
   ${GSTREAMER_LIBRARIES}
   gstapp-1.0
   gstvideo-1.0
+
   ${WAYLAND_CLIENT_LIBRARIES}
+  ${WAYLAND_EGL_LIBRARIES}
+  ${EGL_LIBRARIES}
+  ${GLES2_LIBRARIES}
 )
 endif()
