@@ -1,8 +1,2 @@
-.ninja_deps
-.ninja_log
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-rules.ninja
-
-mimic
+/build/
+/build-cross/
