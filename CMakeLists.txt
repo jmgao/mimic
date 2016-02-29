@@ -24,27 +24,48 @@ find_package(PkgConfig)
 pkg_search_module(LIBUSB REQUIRED libusb-1.0)
 if(NOT M3_CROSS)
 pkg_search_module(GSTREAMER REQUIRED gstreamer-1.0)
+pkg_search_module(WAYLAND_CLIENT wayland-client)
 endif()
 
 link_directories(
   ${LIBUSB_LIBRARY_DIRS}
-  ${GSTREAMER_INCLUDE_DIRS}
+  ${GSTREAMER_LIBRARY_DIRS}
+  ${WAYLAND_CLIENT_LIBRARY_DIRS}
 )
 
 include_directories(
   ${LIBUSB_INCLUDE_DIRS}
   ${GSTREAMER_INCLUDE_DIRS}
+  ${WAYLAND_CLIENT_INCLUDE_DIRS}
 )
 
 add_executable(
   mimic
   src/aoa.cpp
-  src/main.cpp
+  src/main_gst.cpp
 )
 
 target_link_libraries(
   mimic
+  pthread
+  ${LIBUSB_LIBRARIES}
+)
+
+if(NOT M3_CROSS)
+add_executable(
+  mimic_wayland
+  src/aoa.cpp
+  src/decoder.cpp
+  src/main_wayland.cpp
+)
+
+target_link_libraries(
+  mimic_wayland
+  pthread
   ${LIBUSB_LIBRARIES}
   ${GSTREAMER_LIBRARIES}
-  pthread
+  gstapp-1.0
+  gstvideo-1.0
+  ${WAYLAND_CLIENT_LIBRARIES}
 )
+endif()
