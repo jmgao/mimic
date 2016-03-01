@@ -172,11 +172,13 @@ static void create_window() {
 
 #define check_error()                                                   \
   do {                                                                  \
-    GLenum error = glGetError();                                        \
-    if (error != GL_NO_ERROR) {                                         \
+    bool should_exit = false;                                           \
+    GLenum error;                                                       \
+    while ((error = glGetError()) != GL_NO_ERROR) {                     \
+      should_exit = true;                                               \
       fprintf(stderr, "error[%d]: %s\n", __LINE__, gl_strerror(error)); \
-      exit(1);                                                          \
     }                                                                   \
+    if (should_exit) exit(1);                                           \
   } while (0)
 
 #define GLSL(src) "#version 100\n" #src
