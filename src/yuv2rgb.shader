@@ -29,30 +29,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+const char* yub2rgb = GLSL(
+precision highp float;
+
 // This shader takes a Y'UV420p image as a single greyscale plane, and
 // converts it to RGB by sampling the correct parts of the image, and
 // by converting the colorspace to RGB on the fly.
-
-// Projection matrix for the camera.
-uniform mat4 worldViewProjection;
-
-// These are the input/output parameters for our vertex shader
-attribute vec4 position;
-attribute vec2 texCoord0;
-
-// These are the input/output parameters for our pixel shader.
-varying vec2 v_texcoord;
-
-/**
- * The vertex shader does nothing but returns the position of the
- * vertex using the world view projection matrix.
- */
-void main() {
-  gl_Position = worldViewProjection * position;
-  v_texcoord = texCoord0;
-}
-
-// #o3d SplitMarker
 
 // These represent the image dimensions of the SOURCE IMAGE (not the
 // Y'UV420p image).  This is the same as the dimensions of the Y'
@@ -76,7 +58,7 @@ varying vec2 v_texcoord;
  *        trying to render, in parametric coordinates.
  */
 float getYPixel(vec2 position) {
-  position.y = (position.y * 2.0 / 3.0) + (1.0 / 3.0);
+  position.y = (position.y * 2.0 / 3.0);
   return texture2D(textureSampler, position).x;
 }
 
@@ -186,8 +168,8 @@ void main() {
   // the location in the image stream, using floor in several places
   // which makes it hard to use parametric coordinates.
   vec2 pixelPosition = vec2(floor(imageWidth * v_texcoord.x),
-                                floor(imageHeight * v_texcoord.y));
-  pixelPosition -= vec2(0.5, 0.5);
+                            floor(imageHeight * v_texcoord.y));
+
   // We can use the parametric coordinates to get the Y channel, since it's
   // a relatively normal image.
   float yChannel = getYPixel(v_texcoord);
@@ -225,6 +207,6 @@ void main() {
   // Note: The output cannot fully replicate the original image. This is partly
   // because WebGL has limited NPOT (non-power-of-two) texture support and also
   // due to sRGB color conversions that occur in WebGL but not in the plugin.
-  gl_FragColor = vec4(rgb, 1.0);
+  gl_FragColor = vec4(yChannel, yChannel, yChannel, 1.0);
 }
-// #o3d MatrixLoadOrder RowMajor
+);

@@ -242,11 +242,11 @@ static void initialize_opengl() {
       attribute vec2 position;
       attribute vec2 texcoord;
 
-      varying vec2 Texcoord;
+      varying vec2 v_texcoord;
 
       void main() {
           gl_Position = vec4(position, 0.0, 1.0);
-          Texcoord = texcoord;
+          v_texcoord = texcoord;
       }
   );
 
@@ -256,18 +256,10 @@ static void initialize_opengl() {
   check_shader_compile(vertexShader);
 
   // Create and compile the fragment shader
-  const char* fragmentSource = GLSL(
-      uniform sampler2D texture;
-
-      varying highp vec2 Texcoord;
-
-      void main() {
-          gl_FragColor = texture2D(texture, Texcoord);
-      }
-  );
+  #include "yuv2rgb.shader"
 
   GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
+  glShaderSource(fragmentShader, 1, &yub2rgb, NULL);
   glCompileShader(fragmentShader);
   check_shader_compile(fragmentShader);
 
@@ -280,32 +272,38 @@ static void initialize_opengl() {
   check_error();
 
   // Create the texture
-  char buf[WIDTH * HEIGHT * 3] = {};
+  char buf[WIDTH * HEIGHT * 3 / 2] = {};
 
   glActiveTexture(GL_TEXTURE0);
   glGenTextures(1, &texture);
   check_error();
   glBindTexture(GL_TEXTURE_2D, texture);
   check_error();
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, buf);
-  check_error();
-  glUniform1i(glGetUniformLocation(shaderProgram, "texture"), 0);
-  check_error();
-
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, WIDTH, HEIGHT * 3 / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, buf);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   check_error();
 
+  check_error();
+  glUniform1i(glGetUniformLocation(shaderProgram, "textureSampler"), 0);
+  glUniform1f(glGetUniformLocation(shaderProgram, "imageWidth"), float(WIDTH));
+  glUniform1f(glGetUniformLocation(shaderProgram, "imageHeight"), float(HEIGHT));
+  check_error();
+
   // Specify the layout of the vertex data
   GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
+  check_error();
   glEnableVertexAttribArray(posAttrib);
+  check_error();
   glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
   check_error();
 
   GLint texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
+  check_error();
   glEnableVertexAttribArray(texAttrib);
+  check_error();
   glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
                         (void*)(2 * sizeof(GLfloat)));
   check_error();
@@ -316,36 +314,13 @@ static void draw_frame(const void* frame_data) {
     fatal("failed to make surface current: %s", egl_strerror(eglGetError()));
   }
 
-  check_error();
   glActiveTexture(GL_TEXTURE0);
-  check_error();
-#if 0
-  glTexSubImage2D(GL_TEXTURE_2D, texture, 0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_BYTE, frame_data);
-#else
-  glDeleteTextures(1, &texture);
-  check_error();
-  glGenTextures(1, &texture);
-  check_error();
-  glBindTexture(GL_TEXTURE_2D, texture);
-  check_error();
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, frame_data);
-  check_error();
-  glUniform1i(glGetUniformLocation(shaderProgram, "texture"), 0);
-
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-#endif
-  check_error();
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WIDTH, HEIGHT * 3 / 2, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame_data);
 
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
-  check_error();
 
   glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-  check_error();
   eglSwapBuffers(egl_display, egl_surface);
 
   if (!eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
@@ -365,8 +340,8 @@ static void frame_callback(GstSample* sample) {
 
 #ifdef DUMP_FRAME
   static int frame = 0;
-  char filename[sizeof("test/frame1234567890.rgb")];
-  sprintf(filename, "test/frame%d.rgb", frame);
+  char filename[sizeof("test/frame1234567890.yuv")];
+  sprintf(filename, "test/frame%d.yuv", frame);
   int fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0600);
   uint8_t* data = map_info.data;
   int count = map_info.size;
@@ -387,12 +362,12 @@ static void frame_callback(GstSample* sample) {
 }
 
 static void read_splash(char* splash) {
-  int fd = open("splash.rgb", O_RDONLY);
+  int fd = open("splash.yuv", O_RDONLY);
   if (fd < 0) {
     return;
   }
 
-  size_t bytes_left = WIDTH * HEIGHT * 3;
+  size_t bytes_left = WIDTH * HEIGHT * 3 / 2;
   char* cur = splash;
   while (bytes_left > 0) {
     ssize_t bytes_read = read(fd, cur, bytes_left);
