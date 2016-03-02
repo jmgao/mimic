@@ -167,6 +167,7 @@ static void create_window() {
   }
 
   egl_surface = eglCreateWindowSurface(egl_display, egl_conf, egl_window, NULL);
+  eglSurfaceAttrib(egl_display, egl_surface, EGL_SWAP_BEHAVIOR, EGL_BUFFER_DESTROYED);
 
   if (!eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) {
     fatal("failed to make surface current");
