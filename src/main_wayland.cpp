@@ -311,8 +311,8 @@ static void initialize_opengl() {
   check_error();
 }
 
-static void draw_frame(const void* frame_data) {
-  if (!eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) {
+static void draw_frame(const void* frame_data, bool acquire, bool release) {
+  if (acquire && !eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) {
     fatal("failed to make surface current: %s", egl_strerror(eglGetError()));
   }
 
@@ -325,7 +325,7 @@ static void draw_frame(const void* frame_data) {
   glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
   eglSwapBuffers(egl_display, egl_surface);
 
-  if (!eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+  if (release && !eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
     fatal("failed to release surface: %s", egl_strerror(eglGetError()));
   }
 }
@@ -338,7 +338,13 @@ static void frame_callback(GstSample* sample) {
     fatal("failed to map GstBuffer");
   }
 
-  draw_frame(map_info.data);
+  static bool acquired = false;
+  if (!acquired) {
+    draw_frame(map_info.data, true, false);
+    acquired = true;
+  } else {
+    draw_frame(map_info.data, false, false);
+  }
 
 #ifdef DUMP_FRAME
   static int frame = 0;
@@ -401,7 +407,7 @@ int main(int argc, char** argv) {
   char splash[WIDTH * HEIGHT * 3];
   memset(splash, 0xff, sizeof(splash));
   read_splash(splash);
-  draw_frame(splash);
+  draw_frame(splash, true, true);
 
   GMainLoop* loop = g_main_loop_new(nullptr, false);
   std::unique_ptr<AOADevice> device;
