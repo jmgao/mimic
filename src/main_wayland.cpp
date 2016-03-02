@@ -117,6 +117,8 @@ static const char* egl_strerror(EGLenum error) {
     case EGL_CONTEXT_LOST:
       return "EGL_CONTEXT_LOST";
   }
+
+  return "EGL_UNKNOWN";
 }
 
 static void initialize_egl() {
