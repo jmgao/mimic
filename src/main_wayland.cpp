@@ -23,6 +23,7 @@
 
 constexpr int WIDTH = 800;
 constexpr int HEIGHT = 480;
+constexpr int NUM_TEXTURES = 16;
 
 static wl_display* display;
 static wl_compositor* compositor;
@@ -183,7 +184,7 @@ static void create_window() {
 
 #define GLSL(src) "#version 100\n" #src
 
-static GLuint texture;
+static GLuint texture[NUM_TEXTURES];
 static GLuint shaderProgram;
 
 static const char* gl_strerror(GLenum error) {
@@ -273,20 +274,23 @@ static void initialize_opengl() {
   glUseProgram(shaderProgram);
   check_error();
 
-  // Create the texture
+  // Create multiple textures.
   char buf[WIDTH * HEIGHT * 3 / 2] = {};
 
   glActiveTexture(GL_TEXTURE0);
-  glGenTextures(1, &texture);
-  check_error();
-  glBindTexture(GL_TEXTURE_2D, texture);
-  check_error();
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, WIDTH, HEIGHT * 3 / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, buf);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  check_error();
+  for (int i = 0; i < NUM_TEXTURES; ++i) {
+    check_error();
+    glGenTextures(1, &texture[i]);
+    check_error();
+    glBindTexture(GL_TEXTURE_2D, texture[i]);
+    check_error();
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, WIDTH, HEIGHT * 3 / 2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, buf);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    check_error();
+  }
 
   check_error();
   glUniform1i(glGetUniformLocation(shaderProgram, "textureSampler"), 0);
@@ -312,18 +316,28 @@ static void initialize_opengl() {
 }
 
 static void draw_frame(const void* frame_data, bool acquire, bool release) {
+  static int active_texture = 0;
+
   if (acquire && !eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context)) {
     fatal("failed to make surface current: %s", egl_strerror(eglGetError()));
   }
 
-  glActiveTexture(GL_TEXTURE0);
+  auto before = std::chrono::high_resolution_clock::now();
+
+  glBindTexture(GL_TEXTURE_2D, texture[active_texture]);
   glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WIDTH, HEIGHT * 3 / 2, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame_data);
-
-  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-  glClear(GL_COLOR_BUFFER_BIT);
-
   glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
   eglSwapBuffers(egl_display, egl_surface);
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  auto after = std::chrono::high_resolution_clock::now();
+
+  int frame_time = std::chrono::duration_cast<std::chrono::microseconds>(after - before).count();
+  printf("frame time = %fms\n", frame_time / 1000.0);
+
+  if (++active_texture == NUM_TEXTURES) {
+    active_texture = 0;
+  }
 
   if (release && !eglMakeCurrent(egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
     fatal("failed to release surface: %s", egl_strerror(eglGetError()));
