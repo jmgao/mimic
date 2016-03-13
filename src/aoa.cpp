@@ -22,8 +22,18 @@
 #include "chrono_literals.h"
 
 constexpr int VID_GOOGLE = 0x18D1;
-constexpr int PID_HAMMERHEAD = 0x4EE2;
-constexpr int PID_ANGLER = 0x4EE7;
+constexpr int PID_NEXUS_MTP = 0x4EE1;
+constexpr int PID_NEXUS_MTP_ADB = 0x4EE2;
+constexpr int PID_NEXUS_RNDIS = 0x4EE3;
+constexpr int PID_NEXUS_RNDIS_ADB = 0x4EE4;
+constexpr int PID_NEXUS_PTP = 0x4EE5;
+constexpr int PID_NEXUS_PTP_ADB = 0x4EE6;
+constexpr int PID_NEXUS_ADB = 0x4EE7;
+constexpr int PID_NEXUS_MIDI = 0x4EE8;
+constexpr int PID_NEXUS_MIDI_ADB = 0x4EE9;
+#define PID_NEXUS_ALL                                                                    \
+  PID_NEXUS_MTP, PID_NEXUS_MTP_ADB, PID_NEXUS_RNDIS, PID_NEXUS_RNDIS_ADB, PID_NEXUS_PTP, \
+    PID_NEXUS_PTP_ADB, PID_NEXUS_ADB, PID_NEXUS_MIDI, PID_NEXUS_MIDI_ADB
 
 // TODO: These should be in libusb.h somewhere?
 constexpr int USB_DIR_IN = 0x80;
@@ -139,7 +149,7 @@ static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
       }
 
       if (descriptor.idVendor == VID_GOOGLE) {
-        info("found device with VID %#x", descriptor.idVendor);
+        info("found device %x:%x", descriptor.idVendor, descriptor.idProduct);
         auto it = std::find(accepted_pids.cbegin(), accepted_pids.cend(), descriptor.idProduct);
         if (it != accepted_pids.cend()) {
           libusb_device_handle* handle;
@@ -156,10 +166,10 @@ static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
       }
     }
 
-    std::this_thread::sleep_for(1s);
+    std::this_thread::sleep_for(100ms);
   }
 
-  error("timeout elapsed while waiting for device");
+  debug("timeout elapsed while waiting for device");
   return nullptr;
 }
 
@@ -221,7 +231,7 @@ std::unique_ptr<AOADevice> AOADevice::open(AOAMode mode) {
     libusb_init(nullptr);
   });
 
-  libusb_device_handle* handle = open_device_timeout({ PID_HAMMERHEAD, PID_ANGLER }, 100ms);
+  libusb_device_handle* handle = open_device_timeout({ PID_NEXUS_ALL }, 100ms);
   if (!handle) {
     return nullptr;
   }
