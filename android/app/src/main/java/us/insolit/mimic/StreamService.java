@@ -17,7 +17,6 @@ import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
-import android.os.PowerManager;
 import android.util.Log;
 import android.view.Surface;
 
@@ -36,7 +35,6 @@ public class StreamService extends Service {
     MediaCodec videoEncoder;
     VirtualDisplay display;
     Surface surface;
-    PowerManager.WakeLock wakeLock;
 
     int lastOrientation;
     BroadcastReceiver rotationReceiver;
@@ -62,10 +60,6 @@ public class StreamService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        PowerManager powerManager = (PowerManager)getSystemService(Context.POWER_SERVICE);
-        wakeLock = powerManager.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "mimic");
-        wakeLock.acquire();
-
         projectionManager = (MediaProjectionManager)getSystemService(Context.MEDIA_PROJECTION_SERVICE);
 
         UsbManager usbManager = (UsbManager)getSystemService(Context.USB_SERVICE);
@@ -130,7 +124,6 @@ public class StreamService extends Service {
                 ByteBuffer buffer = codec.getOutputBuffer(index);
 
                 try {
-                    Log.e(TAG, "Writing buffer of size " + buffer.remaining());
                     channel.write(buffer);
                     fos.flush();
                     codec.releaseOutputBuffer(index, false);
@@ -170,10 +163,9 @@ public class StreamService extends Service {
             e.printStackTrace();
         }
 
-        wakeLock.release();
+        stopService(new Intent(this, PixelPokerService.class));
         stopSelf();
     }
-
 
     private MediaFormat getFormat() {
         Log.e(TAG, "Configuring encoder for "+getWidth()+"x"+getHeight());
@@ -181,7 +173,6 @@ public class StreamService extends Service {
 
         // Set some required properties. The media codec may fail if these aren't defined.
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 0);
         format.setInteger(MediaFormat.KEY_BIT_RATE, 15 * 1024 * 1024);
         format.setInteger(MediaFormat.KEY_FRAME_RATE, getFrameRate());
         format.setInteger(MediaFormat.KEY_CAPTURE_RATE, getFrameRate());
@@ -199,6 +190,7 @@ public class StreamService extends Service {
         surface = videoEncoder.createInputSurface();
         display.setSurface(surface);
         videoEncoder.start();
+        startService(new Intent(this, PixelPokerService.class));
     }
 
     @Override

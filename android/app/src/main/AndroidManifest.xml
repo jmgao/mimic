@@ -3,7 +3,8 @@
     package="us.insolit.mimic">
 
     <uses-feature android:name="android.hardware.usb.accessory" />
-    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:allowBackup="true"
@@ -30,7 +31,11 @@
         <service
             android:name=".StreamService"
             android:enabled="true"
-            android:exported="false"></service>
+            android:exported="false" />
+        <service
+            android:name=".PixelPokerService"
+            android:enabled="true"
+            android:exported="false"/>
     </application>
 
 </manifest>
