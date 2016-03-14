@@ -123,6 +123,44 @@ static bool aoa_start(libusb_device_handle* handle) {
   return true;
 }
 
+enum class usb_endpoint_iterate_result {
+  proceed,
+  terminate,
+};
+
+using usb_endpoint_iterate_callback_t = usb_endpoint_iterate_result (*)(
+  const libusb_interface_descriptor& interface, const libusb_endpoint_descriptor& endpoint);
+
+template <typename Callback>
+static bool usb_endpoint_iterate(libusb_device_handle* handle, const Callback& callback) {
+  struct libusb_config_descriptor* config;
+  int rc = libusb_get_active_config_descriptor(libusb_get_device(handle), &config);
+  if (rc != 0) {
+    error("failed to get active config descriptor");
+    return false;
+  }
+  Auto(libusb_free_config_descriptor(config));
+
+  for (size_t i = 0; i < config->bNumInterfaces; ++i) {
+    const libusb_interface& interface = config->interface[i];
+    for (ssize_t j = 0; j < interface.num_altsetting; ++j) {
+      const libusb_interface_descriptor& interface_descriptor = interface.altsetting[j];
+      for (size_t k = 0; k < interface_descriptor.bNumEndpoints; ++k) {
+        const libusb_endpoint_descriptor& endpoint = interface_descriptor.endpoint[k];
+        switch (callback(interface_descriptor, endpoint)) {
+          case usb_endpoint_iterate_result::proceed:
+            continue;
+
+          case usb_endpoint_iterate_result::terminate:
+            return true;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
 static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
                                                  std::chrono::milliseconds timeout) {
   int rc;
@@ -247,16 +285,57 @@ bool AOADevice::spawn_accessory_threads() {
     return false;
   }
 
-  internal_socket = sfd[0];
-  external_socket = sfd[1];
+  accessory_internal_fd = sfd[0];
+  accessory_external_fd = sfd[1];
 
-  constexpr int read_endpoint = 0x81;
-  constexpr int write_endpoint = 0x02;
-  auto read_function = [this]() {
+  // Find the accessory endpoints.
+  int sink = 0;
+  int source = 0;
+
+  auto iterate_callback = [&sink, &source](const libusb_interface_descriptor& interface,
+                                           const libusb_endpoint_descriptor& endpoint) {
+    if (interface.bInterfaceClass != 255 || interface.bInterfaceSubClass != 255 ||
+        interface.bInterfaceProtocol != 0) {
+      return usb_endpoint_iterate_result::proceed;
+    }
+
+    if ((endpoint.bEndpointAddress & 0x80) == 0) {
+      if (sink != 0) {
+        error("multiple sink endpoints found");
+        exit(1);
+      }
+      sink = endpoint.bEndpointAddress;
+    } else {
+      if (source != 0) {
+        error("multiple source endpoints found");
+        exit(1);
+      }
+      source = endpoint.bEndpointAddress;
+    }
+
+    return usb_endpoint_iterate_result::proceed;
+  };
+
+  if (!usb_endpoint_iterate(handle, iterate_callback)) {
+    error("failed to iterate across USB endpoints");
+    exit(1);
+  }
+
+  if (sink == 0) {
+    error("failed to find sink endpoint");
+    exit(0);
+  } else if (source == 0) {
+    error("failed to find source endpoint");
+    exit(0);
+  }
+
+  debug("found AoA device endpoints: sink=%#x, source = %#x", sink, source);
+
+  auto read_function = [this, source]() {
     while (true) {
       unsigned char buffer[16384];
       int transferred;
-      int rc = libusb_bulk_transfer(handle, read_endpoint, buffer, sizeof(buffer), &transferred, 0);
+      int rc = libusb_bulk_transfer(handle, source, buffer, sizeof(buffer), &transferred, 0);
       if (rc != 0) {
         usb_error(rc);
         exit(1);
@@ -265,7 +344,7 @@ bool AOADevice::spawn_accessory_threads() {
       debug("transferring %d bytes from usb to local", transferred);
       const char* current = reinterpret_cast<char*>(buffer);
       while (transferred > 0) {
-        ssize_t written = write(internal_socket, current, transferred);
+        ssize_t written = write(accessory_internal_fd, current, transferred);
         if (written < 0) {
           error("write failed: %s", strerror(errno));
           exit(1);
@@ -280,10 +359,10 @@ bool AOADevice::spawn_accessory_threads() {
     }
   };
 
-  auto write_function = [this]() {
+  auto write_function = [this, sink]() {
     while (true) {
       char buffer[16384];
-      ssize_t bytes_read = read(internal_socket, buffer, sizeof(buffer));
+      ssize_t bytes_read = read(accessory_internal_fd, buffer, sizeof(buffer));
       if (bytes_read < 0) {
         error("read failed: %s", strerror(errno));
         exit(1);
@@ -293,7 +372,7 @@ bool AOADevice::spawn_accessory_threads() {
       unsigned char* current = reinterpret_cast<unsigned char*>(buffer);
       while (bytes_read > 0) {
         int transferred;
-        int rc = libusb_bulk_transfer(handle, write_endpoint, current, bytes_read, &transferred, 0);
+        int rc = libusb_bulk_transfer(handle, sink, current, bytes_read, &transferred, 0);
         if (rc != 0) {
           usb_error(rc);
           exit(1);
@@ -309,8 +388,8 @@ bool AOADevice::spawn_accessory_threads() {
     }
   };
 
-  read_thread = std::thread(read_function);
-  write_thread = std::thread(write_function);
+  this->accessory_read_thread = std::thread(read_function);
+  this->accessory_write_thread = std::thread(write_function);
 
   return true;
 }

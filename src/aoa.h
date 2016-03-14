@@ -26,10 +26,10 @@ class AOADevice {
  private:
   libusb_device_handle* handle = nullptr;
   AOAMode mode = AOAMode(0);
-  std::thread read_thread;
-  std::thread write_thread;
-  int internal_socket = -1;
-  int external_socket = -1;
+  std::thread accessory_read_thread;
+  std::thread accessory_write_thread;
+  int accessory_internal_fd = -1;
+  int accessory_external_fd = -1;
 
   AOADevice(libusb_device_handle* handle, AOAMode mode);
 
@@ -40,7 +40,7 @@ class AOADevice {
   static std::unique_ptr<AOADevice> open(AOAMode mode);
 
   int get_accessory_fd() {
-    return external_socket;
+    return accessory_external_fd;
   }
 
  private:
