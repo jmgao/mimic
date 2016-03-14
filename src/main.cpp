@@ -14,52 +14,27 @@
 #include "aoa.h"
 #include "chrono_literals.h"
 
-#define LINKED_GSTREAMER 0
-
-#if LINKED_GSTREAMER
-#include <gst/gst.h>
-
-static int linked_gstreamer(int accessory_fd) {
-  // Play the stream.
-  GstElement *pipeline;
-  GstBus *bus;
-  GstMessage *msg;
-  gst_init(nullptr, nullptr);
-  dup2(accessory_fd, STDIN_FILENO);
-
-  pipeline = gst_parse_launch("fdsrc ! h264parse ! avdec_h264 ! autovideosink sync=false", nullptr);
-  gst_element_set_state(pipeline, GST_STATE_PLAYING);
-  bus = gst_element_get_bus(pipeline);
-  msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GstMessageType(GST_MESSAGE_ERROR | GST_MESSAGE_EOS));
-
-  if (msg) {
-    gst_message_unref(msg);
-  }
-  gst_object_unref(bus);
-  gst_element_set_state(pipeline, GST_STATE_NULL);
-  gst_object_unref(pipeline);
-  return 0;
-}
-
-#else
-
-static pid_t child_pid = -1;
+static pid_t video_pid = -1;
+static pid_t audio_pid = -1;
 
 static void reap() {
-  if (child_pid > 0) {
-    warn("Reaping child %d", child_pid);
-    kill(child_pid, SIGINT);
+  if (video_pid > 0) {
+    warn("Reaping child %d", video_pid);
+    kill(video_pid, SIGINT);
+  }
+  if (audio_pid > 0) {
+    warn("Reaping child %d", audio_pid);
   }
 }
 
-static int exec_gstreamer(int accessory_fd) {
-  child_pid = fork();
-  if (child_pid < 0) {
-    error("fork failed: %s", strerror(errno));
+static int exec_gstreamer(int accessory_fd, int audio_fd) {
+  video_pid = fork();
+  if (video_pid < 0) {
+    error("video fork failed: %s", strerror(errno));
     return 1;
   }
 
-  if (child_pid == 0) {
+  if (video_pid == 0) {
     dup2(accessory_fd, STDIN_FILENO);
 #ifdef M3_CROSS
     execlp("gst-launch", "gst-launch", "fdsrc", "!",
@@ -73,24 +48,44 @@ static int exec_gstreamer(int accessory_fd) {
     quick_exit(1);
   }
 
-  atexit(reap);
-  int status;
-  if (waitpid(child_pid, &status, 0) != child_pid) {
-    error("waitpid failed: %s", strerror(errno));
+  audio_pid = fork();
+  if (audio_pid < 0) {
+    error("audio fork failed: %s", strerror(errno));
     return 1;
   }
 
-  child_pid = -1;
-  return WEXITSTATUS(status);
-}
+  if (audio_pid == 0) {
+    dup2(audio_fd, STDIN_FILENO);
+    execlp("gst-launch-0.10", "gst-launch-0.10", "fdsrc", "!",
+           "audio/x-raw-int,width=16,depth=16,endianness=1234,channels=2,rate=44100,signed=true",
+           "!", "audioconvert", "!", "autoaudiosink", "sync=false", nullptr);
+    error("exec failed: %s", strerror(errno));
+    quick_exit(1);
+  }
 
-#endif
+  atexit(reap);
+
+  int status;
+  if (waitpid(video_pid, &status, 0) != video_pid) {
+    error("waitpid failed: %s", strerror(errno));
+    return 1;
+  }
+  video_pid = -1;
+
+  if (waitpid(audio_pid, &status, 0) != video_pid) {
+    error("waitpid failed: %s", strerror(errno));
+    return 1;
+  }
+  audio_pid = -1;
+
+  return 0;
+}
 
 int main(int argc, char* argv[]) {
   std::unique_ptr<AOADevice> device;
   while (!device) {
     std::this_thread::sleep_for(100ms);
-    device = AOADevice::open(AOAMode::accessory);
+    device = AOADevice::open(AOAMode::accessory | AOAMode::audio);
   }
 
   if (!device->initialize()) {
@@ -99,10 +94,7 @@ int main(int argc, char* argv[]) {
   }
 
   int accessory_fd = device->get_accessory_fd();
+  int audio_fd = device->get_audio_fd();
 
-#if LINKED_GSTREAMER
-  return linked_gstreamer(accessory_fd);
-#else
-  return exec_gstreamer(accessory_fd);
-#endif
+  return exec_gstreamer(accessory_fd, audio_fd);
 }

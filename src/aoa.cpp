@@ -256,6 +256,13 @@ bool AOADevice::initialize() {
       return false;
     }
   }
+
+  if ((mode & AOAMode::audio) == AOAMode::audio) {
+    if (!spawn_audio_threads()) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -337,7 +344,6 @@ bool AOADevice::spawn_accessory_threads() {
         exit(1);
       }
 
-      debug("transferring %d bytes from usb to local", transferred);
       const char* current = reinterpret_cast<char*>(buffer);
       while (transferred > 0) {
         ssize_t written = write(accessory_internal_fd, current, transferred);
@@ -364,7 +370,6 @@ bool AOADevice::spawn_accessory_threads() {
         exit(1);
       }
 
-      debug("transferring %zd bytes from local to usb", bytes_read);
       unsigned char* current = reinterpret_cast<unsigned char*>(buffer);
       while (bytes_read > 0) {
         int transferred;
@@ -386,6 +391,157 @@ bool AOADevice::spawn_accessory_threads() {
 
   this->accessory_read_thread = std::thread(read_function);
   this->accessory_write_thread = std::thread(write_function);
+
+  return true;
+}
+
+constexpr size_t AUDIO_PACKET_BUFFER = 128;
+struct audio_transfer_userdata {
+  libusb_device_handle* handle;
+  int endpoint;
+  int fd;
+};
+
+static void audio_transfer_enqueue(struct libusb_transfer* transfer);
+
+static void audio_transfer_callback(struct libusb_transfer* transfer) {
+  auto userdata = static_cast<audio_transfer_userdata*>(transfer->user_data);
+  switch (transfer->status) {
+    case LIBUSB_TRANSFER_COMPLETED: {
+      size_t packet_size = transfer->iso_packet_desc[0].length;
+      struct iovec iov[AUDIO_PACKET_BUFFER];
+      ssize_t iovs = 0;
+      ssize_t bytes = 0;
+      for (int packet_num = 0; packet_num < transfer->num_iso_packets; ++packet_num) {
+        const libusb_iso_packet_descriptor& packet = transfer->iso_packet_desc[packet_num];
+
+        if (packet.actual_length == 0) {
+          continue;
+        }
+
+        iov[iovs++] = {.iov_base = transfer->buffer + packet_size * packet_num,
+                       .iov_len = packet.actual_length };
+
+        bytes += packet.actual_length;
+      }
+
+      if (bytes > 0) {
+        ssize_t rc = writev(userdata->fd, iov, iovs);
+        if (rc < 0) {
+          error("failed to write audio: %s", strerror(errno));
+          exit(1);
+        } else if (rc == 0) {
+          error("hit EOF while writing audio");
+          exit(1);
+        } else if (rc < bytes) {
+          error("buffer overrun while writing audio");
+        }
+      }
+
+      audio_transfer_enqueue(transfer);
+      break;
+    }
+
+    default:
+      error("audio transfer failed: %s", libusb_error_name(transfer->status));
+      break;
+  }
+}
+
+void audio_transfer_enqueue(struct libusb_transfer* transfer) {
+  static unsigned char* buffer;
+  static int packet_size;
+
+  auto userdata = static_cast<audio_transfer_userdata*>(transfer->user_data);
+
+  if (!buffer) {
+    packet_size =
+      libusb_get_max_iso_packet_size(libusb_get_device(userdata->handle), userdata->endpoint);
+    if (packet_size < 0) {
+      error("failed to get maximum isochronous packet size: %s", libusb_error_name(packet_size));
+      exit(1);
+    }
+    buffer = new unsigned char[AUDIO_PACKET_BUFFER * packet_size]();
+  }
+
+  libusb_fill_iso_transfer(transfer, userdata->handle, userdata->endpoint, buffer, sizeof(buffer),
+                           AUDIO_PACKET_BUFFER, audio_transfer_callback, userdata, 1000);
+  libusb_set_iso_packet_lengths(transfer, packet_size);
+  libusb_submit_transfer(transfer);
+}
+
+bool AOADevice::spawn_audio_threads() {
+  int sfd[2];
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, sfd) != 0) {
+    fprintf(stderr, "failed to create socketpair: %s\n", strerror(errno));
+    return false;
+  }
+
+  audio_internal_fd = sfd[0];
+  audio_external_fd = sfd[1];
+
+  // Find the audio endpoint.
+  int source = 0;
+
+  auto iterate_callback = [this, &source](const libusb_interface_descriptor& interface,
+                                          const libusb_endpoint_descriptor& endpoint) {
+    if (interface.bInterfaceClass != 1 || interface.bInterfaceSubClass != 2) {
+      return usb_endpoint_iterate_result::proceed;
+    }
+
+    if ((endpoint.bEndpointAddress & 0x80) == 0) {
+      debug("found audio sink: interface=%d, alternate=%d, descriptor=%#x",
+            interface.bInterfaceNumber, interface.bAlternateSetting, endpoint.bEndpointAddress);
+    } else {
+      debug("found audio source: interface=%d, alternate=%d, descriptor=%#x",
+            interface.bInterfaceNumber, interface.bAlternateSetting, endpoint.bEndpointAddress);
+
+      // TODO: Handle multiple alternate settings properly.
+      source = endpoint.bEndpointAddress;
+      int rc = libusb_detach_kernel_driver(handle, interface.bInterfaceNumber);
+      if (rc != 0 && rc != LIBUSB_ERROR_NOT_FOUND) {
+        error("failed to detach kernel driver from USB audio interface: %s", libusb_error_name(rc));
+        exit(1);
+      }
+
+      rc = libusb_claim_interface(handle, interface.bInterfaceNumber);
+      if (rc != 0) {
+        error("failed to claim USB audio interface: %s", libusb_error_name(rc));
+        exit(1);
+      }
+
+      rc = libusb_set_interface_alt_setting(handle, interface.bInterfaceNumber,
+                                            interface.bAlternateSetting);
+      if (rc != 0) {
+        error("failed to set audio source alternate setting: %s", libusb_error_name(rc));
+        exit(1);
+      }
+      return usb_endpoint_iterate_result::terminate;
+    }
+
+    return usb_endpoint_iterate_result::proceed;
+  };
+
+  if (!usb_endpoint_iterate(handle, iterate_callback)) {
+    error("failed to iterate across USB endpoints");
+    exit(1);
+  }
+
+  if (source == 0) {
+    error("failed to find audio source endpoint");
+    exit(0);
+  }
+
+  this->audio_read_thread = std::thread([this, source]() {
+    libusb_transfer* transfer = libusb_alloc_transfer(AUDIO_PACKET_BUFFER);
+    auto userdata =
+      new audio_transfer_userdata{.handle = handle, .endpoint = source, .fd = audio_internal_fd };
+    transfer->user_data = userdata;
+    audio_transfer_enqueue(transfer);
+    while (true) {
+      libusb_handle_events(nullptr);
+    }
+  });
 
   return true;
 }

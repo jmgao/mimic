@@ -31,6 +31,11 @@ class AOADevice {
   int accessory_internal_fd = -1;
   int accessory_external_fd = -1;
 
+  std::thread audio_read_thread;
+  std::thread audio_write_thread;
+  int audio_internal_fd = -1;
+  int audio_external_fd = -1;
+
   AOADevice(libusb_device_handle* handle, AOAMode mode);
 
  public:
@@ -43,6 +48,11 @@ class AOADevice {
     return accessory_external_fd;
   }
 
+  int get_audio_fd() {
+    return audio_external_fd;
+  }
+
  private:
   bool spawn_accessory_threads();
+  bool spawn_audio_threads();
 };
