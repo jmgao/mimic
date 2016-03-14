@@ -55,10 +55,6 @@ constexpr char VERSION[] = "0.0.1";
 constexpr char URI[] = "https://insolit.us/mimic";
 constexpr char SERIAL[] = "0";
 
-static void usb_error(int error) {
-  error("%s", libusb_error_name(error));
-};
-
 static bool aoa_initialize(libusb_device_handle* handle, AOAMode mode) {
   unsigned char aoa_version_buf[2] = {};
   int rc;
@@ -68,7 +64,7 @@ static bool aoa_initialize(libusb_device_handle* handle, AOAMode mode) {
                                sizeof(aoa_version_buf), 0);
 
   if (rc < 0) {
-    usb_error(rc);
+    error("failed to initialize AoA: %s", libusb_error_name(rc));
     return false;
   }
 
@@ -83,7 +79,7 @@ static bool aoa_initialize(libusb_device_handle* handle, AOAMode mode) {
     int rc = libusb_control_transfer(handle, USB_DIR_OUT | USB_TYPE_VENDOR, 52, 0, string_id,
                                      (unsigned char*)(string.c_str()), string.length() + 1, 0);
     if (rc < 0) {
-      usb_error(rc);
+      error("failed to send vendor string: %s", libusb_error_name(rc));
       return false;
     }
     return true;
@@ -108,7 +104,7 @@ static bool aoa_initialize(libusb_device_handle* handle, AOAMode mode) {
 static bool aoa_enable_audio(libusb_device_handle* handle) {
   int rc = libusb_control_transfer(handle, USB_DIR_OUT | USB_TYPE_VENDOR, 58, 1, 0, nullptr, 0, 0);
   if (rc < 0) {
-    usb_error(rc);
+    error("failed to enable audio: %s", libusb_error_name(rc));
     return false;
   }
   return true;
@@ -117,7 +113,7 @@ static bool aoa_enable_audio(libusb_device_handle* handle) {
 static bool aoa_start(libusb_device_handle* handle) {
   int rc = libusb_control_transfer(handle, USB_DIR_OUT | USB_TYPE_VENDOR, 53, 0, 0, nullptr, 0, 0);
   if (rc < 0) {
-    usb_error(rc);
+    error("failed to start AoA: %s", libusb_error_name(rc));
     return false;
   }
   return true;
@@ -173,7 +169,7 @@ static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
     Auto(libusb_free_device_list(devices, true));
 
     if (device_count < 0) {
-      usb_error(device_count);
+      error("failed to get connected devices: %s", libusb_error_name(device_count));
       return nullptr;
     }
 
@@ -182,7 +178,7 @@ static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
       struct libusb_device_descriptor descriptor;
       rc = libusb_get_device_descriptor(device, &descriptor);
       if (rc != 0) {
-        usb_error(rc);
+        error("failed to get device descriptor: %s", libusb_error_name(rc));
         return nullptr;
       }
 
@@ -194,7 +190,7 @@ static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
 
           rc = libusb_open(device, &handle);
           if (rc != 0) {
-            usb_error(rc);
+            error("failed to open device: %s", libusb_error_name(rc));
             return nullptr;
           }
           return handle;
@@ -337,7 +333,7 @@ bool AOADevice::spawn_accessory_threads() {
       int transferred;
       int rc = libusb_bulk_transfer(handle, source, buffer, sizeof(buffer), &transferred, 0);
       if (rc != 0) {
-        usb_error(rc);
+        error("failed to transfer data from AoA endpoint: %s", libusb_error_name(rc));
         exit(1);
       }
 
@@ -374,7 +370,7 @@ bool AOADevice::spawn_accessory_threads() {
         int transferred;
         int rc = libusb_bulk_transfer(handle, sink, current, bytes_read, &transferred, 0);
         if (rc != 0) {
-          usb_error(rc);
+          error("failed to transfer data to AoA endpoint: %s", libusb_error_name(rc));
           exit(1);
         }
 
