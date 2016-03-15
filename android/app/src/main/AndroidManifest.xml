@@ -32,10 +32,6 @@
             android:name=".StreamService"
             android:enabled="true"
             android:exported="false" />
-        <service
-            android:name=".PixelPokerService"
-            android:enabled="true"
-            android:exported="false"/>
     </application>
 
 </manifest>

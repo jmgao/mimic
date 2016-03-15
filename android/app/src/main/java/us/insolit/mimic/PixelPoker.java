@@ -1,11 +1,8 @@
 package us.insolit.mimic;
 
-import android.app.Service;
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.opengl.GLSurfaceView;
-import android.os.IBinder;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -18,8 +15,8 @@ import javax.microedition.khronos.opengles.GL10;
 //       if nothing else happens afterwards. Superimpose a GLSurfaceView over everything else to
 //       force a frame through the codec every vsync.
 
-public class PixelPokerService extends Service {
-    class PixelRenderer implements GLSurfaceView.Renderer {
+public class PixelPoker {
+    static class PixelRenderer implements GLSurfaceView.Renderer {
         @Override
         public void onSurfaceCreated(GL10 gl10, EGLConfig eglConfig) {
         }
@@ -33,7 +30,7 @@ public class PixelPokerService extends Service {
         }
     }
 
-    class PixelView extends GLSurfaceView {
+    static class PixelView extends GLSurfaceView {
         private final PixelRenderer mRenderer = new PixelRenderer();
 
         public PixelView(Context context){
@@ -45,22 +42,19 @@ public class PixelPokerService extends Service {
         }
     }
 
-    private WindowManager windowManager;
-    private PixelView pixelView;
+    private static WindowManager windowManager;
+    private static PixelView pixelView;
+    private static final int viewWidth = 10;
+    private static final int viewHeight = 10;
 
-    public PixelPokerService() {
-    }
+    static void start(Context ctx) {
+        windowManager = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
 
-    @Override public void onCreate() {
-        super.onCreate();
-
-        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-
-        pixelView = new PixelView(this);
+        pixelView = new PixelView(ctx);
 
         LayoutParams params = new LayoutParams(
-                10,
-                10,
+                viewWidth,
+                viewHeight,
                 LayoutParams.TYPE_PHONE,
                 LayoutParams.FLAG_NOT_FOCUSABLE |
                         LayoutParams.FLAG_LAYOUT_NO_LIMITS | LayoutParams.FLAG_LAYOUT_IN_SCREEN |
@@ -71,21 +65,16 @@ public class PixelPokerService extends Service {
         params.x = 0;
         params.y = 0;
 
-        ViewGroup.LayoutParams viewParams = new ViewGroup.LayoutParams(10, 10);
+        ViewGroup.LayoutParams viewParams = new ViewGroup.LayoutParams(viewWidth, viewHeight);
         pixelView.setLayoutParams(viewParams);
 
         windowManager.addView(pixelView, params);
     }
 
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
+    public static void stop() {
         if (pixelView != null) windowManager.removeView(pixelView);
-    }
+        pixelView = null;
+        windowManager = null;
 
-    @Override
-    public IBinder onBind(Intent intent) {
-        // TODO: Return the communication channel to the service.
-        throw new UnsupportedOperationException("Not yet implemented");
     }
 }

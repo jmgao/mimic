@@ -1,6 +1,7 @@
 package us.insolit.mimic;
 
 import android.app.Activity;
+import android.app.Notification;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -60,9 +61,9 @@ public class StreamService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        projectionManager = (MediaProjectionManager)getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+        projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
 
-        UsbManager usbManager = (UsbManager)getSystemService(Context.USB_SERVICE);
+        UsbManager usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
         UsbAccessory accessory = intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY);
 
         ParcelFileDescriptor pfd = usbManager.openAccessory(accessory);
@@ -103,6 +104,14 @@ public class StreamService extends Service {
 
         registerReceiver(rotationReceiver, filter);
 
+        PixelPoker.start(this);
+        Notification notification = new Notification.Builder(this)
+                .setPriority(Notification.PRIORITY_MIN)
+                .setContentTitle("mimic")
+                .setContentText("Streaming to client.")
+                .setSmallIcon(R.drawable.ic_notification)
+                .build();
+        startForeground(1, notification);
         return START_NOT_STICKY;
     }
 
@@ -163,12 +172,12 @@ public class StreamService extends Service {
             e.printStackTrace();
         }
 
-        stopService(new Intent(this, PixelPokerService.class));
+        stopService(new Intent(this, PixelPoker.class));
         stopSelf();
     }
 
     private MediaFormat getFormat() {
-        Log.e(TAG, "Configuring encoder for "+getWidth()+"x"+getHeight());
+        Log.e(TAG, "Configuring encoder for " + getWidth() + "x" + getHeight());
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, getWidth(), getHeight());
 
         // Set some required properties. The media codec may fail if these aren't defined.
@@ -190,11 +199,17 @@ public class StreamService extends Service {
         surface = videoEncoder.createInputSurface();
         display.setSurface(surface);
         videoEncoder.start();
-        startService(new Intent(this, PixelPokerService.class));
+        startService(new Intent(this, PixelPoker.class));
     }
 
     @Override
     public IBinder onBind(Intent intent) {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void onDestroy() {
+        PixelPoker.stop();
+        super.onDestroy();
     }
 }
