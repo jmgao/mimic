@@ -28,11 +28,13 @@ static void reap() {
   }
 }
 
-static int exec_gstreamer(int accessory_fd, int audio_fd) {
+static void exec_gstreamer(int accessory_fd, int audio_fd) {
+  atexit(reap);
+
   video_pid = fork();
   if (video_pid < 0) {
     error("video fork failed: %s", strerror(errno));
-    return 1;
+    exit(1);
   }
 
   if (video_pid == 0) {
@@ -46,13 +48,13 @@ static int exec_gstreamer(int accessory_fd, int audio_fd) {
            "autovideosink", "sync=false", nullptr);
 #endif
     error("exec failed: %s", strerror(errno));
-    quick_exit(1);
+    exit(1);
   }
 
   audio_pid = fork();
   if (audio_pid < 0) {
     error("audio fork failed: %s", strerror(errno));
-    return 1;
+    exit(1);
   }
 
   if (audio_pid == 0) {
@@ -61,25 +63,21 @@ static int exec_gstreamer(int accessory_fd, int audio_fd) {
            "audio/x-raw-int,width=16,depth=16,endianness=1234,channels=2,rate=44100,signed=true",
            "!", "audioconvert", "!", "autoaudiosink", "sync=false", nullptr);
     error("exec failed: %s", strerror(errno));
-    quick_exit(1);
+    exit(1);
   }
+}
 
-  atexit(reap);
-
+static void wait_for_exit() {
   int status;
   if (waitpid(video_pid, &status, 0) != video_pid) {
     error("waitpid failed: %s", strerror(errno));
-    return 1;
   }
   video_pid = -1;
 
   if (waitpid(audio_pid, &status, 0) != video_pid) {
     error("waitpid failed: %s", strerror(errno));
-    return 1;
   }
   audio_pid = -1;
-
-  return 0;
 }
 
 int main(int argc, char* argv[]) {
@@ -97,5 +95,8 @@ int main(int argc, char* argv[]) {
   int accessory_fd = device->get_accessory_fd();
   int audio_fd = device->get_audio_fd();
 
-  return exec_gstreamer(accessory_fd, audio_fd);
+  exec_gstreamer(accessory_fd, audio_fd);
+  wait_for_exit();
+
+  return 0;
 }
