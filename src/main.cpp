@@ -24,6 +24,7 @@ static void reap() {
   }
   if (audio_pid > 0) {
     warn("Reaping child %d", audio_pid);
+    kill(audio_pid, SIGINT);
   }
 }
 
