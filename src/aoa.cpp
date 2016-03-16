@@ -157,6 +157,22 @@ static bool usb_endpoint_iterate(libusb_device_handle* handle, const Callback& c
   return true;
 }
 
+static void attach_usb_interface(libusb_device_handle* handle, int interface) {
+  int rc = libusb_detach_kernel_driver(handle, interface);
+  if (rc == LIBUSB_ERROR_NOT_FOUND) {
+    info("no kernel driver was attached to interface %#x", interface);
+  } else if (rc != 0) {
+    error("failed to detach kernel driver for interface %#x: %s", interface, libusb_error_name(rc));
+    exit(1);
+  }
+
+  rc = libusb_claim_interface(handle, interface);
+  if (rc != 0) {
+    error("failed to claim interface %#x: %s", interface, libusb_error_name(rc));
+    exit(1);
+  }
+}
+
 static libusb_device_handle* open_device_timeout(std::vector<int> accepted_pids,
                                                  std::chrono::milliseconds timeout) {
   int rc;
@@ -277,6 +293,7 @@ std::unique_ptr<AOADevice> AOADevice::open(AOAMode mode) {
     return nullptr;
   }
 
+  attach_usb_interface(handle, 0);
   std::unique_ptr<AOADevice> device(new AOADevice(handle, mode));
   return std::move(device);
 }
@@ -292,11 +309,12 @@ bool AOADevice::spawn_accessory_threads() {
   accessory_external_fd = sfd[1];
 
   // Find the accessory endpoints.
+  int interface_number = 0;
   int sink = 0;
   int source = 0;
 
-  auto iterate_callback = [&sink, &source](const libusb_interface_descriptor& interface,
-                                           const libusb_endpoint_descriptor& endpoint) {
+  auto iterate_callback = [&](const libusb_interface_descriptor& interface,
+                              const libusb_endpoint_descriptor& endpoint) {
     if (interface.bInterfaceClass != 255 || interface.bInterfaceSubClass != 255 ||
         interface.bInterfaceProtocol != 0) {
       return usb_endpoint_iterate_result::proceed;
@@ -307,13 +325,27 @@ bool AOADevice::spawn_accessory_threads() {
         error("multiple sink endpoints found");
         exit(1);
       }
+
+      if (interface_number != 0 && interface_number != interface.bInterfaceNumber) {
+        error("sink and source on separate interfaces?");
+        exit(1);
+      }
+
       sink = endpoint.bEndpointAddress;
+      interface_number = interface.bInterfaceNumber;
     } else {
       if (source != 0) {
         error("multiple source endpoints found");
         exit(1);
       }
+
+      if (interface_number != 0 && interface_number != interface.bInterfaceNumber) {
+        error("sink and source on separate interfaces?");
+        exit(1);
+      }
+
       source = endpoint.bEndpointAddress;
+      interface_number = interface.bInterfaceNumber;
     }
 
     return usb_endpoint_iterate_result::proceed;
@@ -333,6 +365,8 @@ bool AOADevice::spawn_accessory_threads() {
   }
 
   debug("found AoA device endpoints: sink=%#x, source = %#x", sink, source);
+
+  attach_usb_interface(handle, interface_number);
 
   auto read_function = [this, source]() {
     while (true) {
@@ -498,20 +532,11 @@ bool AOADevice::spawn_audio_threads() {
 
       // TODO: Handle multiple alternate settings properly.
       source = endpoint.bEndpointAddress;
-      int rc = libusb_detach_kernel_driver(handle, interface.bInterfaceNumber);
-      if (rc != 0 && rc != LIBUSB_ERROR_NOT_FOUND) {
-        error("failed to detach kernel driver from USB audio interface: %s", libusb_error_name(rc));
-        exit(1);
-      }
 
-      rc = libusb_claim_interface(handle, interface.bInterfaceNumber);
-      if (rc != 0) {
-        error("failed to claim USB audio interface: %s", libusb_error_name(rc));
-        exit(1);
-      }
+      attach_usb_interface(handle, interface.bInterfaceNumber);
 
-      rc = libusb_set_interface_alt_setting(handle, interface.bInterfaceNumber,
-                                            interface.bAlternateSetting);
+      int rc = libusb_set_interface_alt_setting(handle, interface.bInterfaceNumber,
+                                                interface.bAlternateSetting);
       if (rc != 0) {
         error("failed to set audio source alternate setting: %s", libusb_error_name(rc));
         exit(1);
