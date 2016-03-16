@@ -473,8 +473,8 @@ void audio_transfer_enqueue(struct libusb_transfer* transfer) {
   auto userdata = static_cast<audio_transfer_userdata*>(transfer->user_data);
 
   if (!buffer) {
-    packet_size =
-      libusb_get_max_iso_packet_size(libusb_get_device(userdata->handle), userdata->endpoint);
+    libusb_device* device = libusb_get_device(userdata->handle);
+    packet_size = libusb_get_max_iso_packet_size(device, userdata->endpoint);
     if (packet_size < 0) {
       fatal("failed to get maximum isochronous packet size: %s", libusb_error_name(packet_size));
     }
