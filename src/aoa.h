@@ -13,6 +13,11 @@
 #define info(fmt, ...) _log(fmt, "info: ", ##__VA_ARGS__)
 #define warn(fmt, ...) _log(fmt, "warning: ", ##__VA_ARGS__)
 #define error(fmt, ...) _log(fmt, "error: ", ##__VA_ARGS__)
+#define fatal(...) \
+  do {                  \
+    error(__VA_ARGS__); \
+    exit(1);            \
+  } while (false)
 
 enum class AOAMode {
   accessory = 1 << 0,

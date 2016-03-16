@@ -33,8 +33,7 @@ static void exec_gstreamer(int accessory_fd, int audio_fd) {
 
   video_pid = fork();
   if (video_pid < 0) {
-    error("video fork failed: %s", strerror(errno));
-    exit(1);
+    fatal("video fork failed: %s", strerror(errno));
   }
 
   if (video_pid == 0) {
@@ -47,14 +46,12 @@ static void exec_gstreamer(int accessory_fd, int audio_fd) {
     execlp("gst-launch-1.0", "gst-launch-1.0", "fdsrc", "!", "h264parse", "!", "avdec_h264", "!",
            "autovideosink", "sync=false", nullptr);
 #endif
-    error("exec failed: %s", strerror(errno));
-    exit(1);
+    fatal("exec failed: %s", strerror(errno));
   }
 
   audio_pid = fork();
   if (audio_pid < 0) {
-    error("audio fork failed: %s", strerror(errno));
-    exit(1);
+    fatal("audio fork failed: %s", strerror(errno));
   }
 
   if (audio_pid == 0) {
@@ -62,8 +59,7 @@ static void exec_gstreamer(int accessory_fd, int audio_fd) {
     execlp("gst-launch-0.10", "gst-launch-0.10", "fdsrc", "!",
            "audio/x-raw-int,width=16,depth=16,endianness=1234,channels=2,rate=44100,signed=true",
            "!", "audioconvert", "!", "autoaudiosink", "sync=false", nullptr);
-    error("exec failed: %s", strerror(errno));
-    exit(1);
+    fatal("exec failed: %s", strerror(errno));
   }
 }
 
@@ -88,8 +84,7 @@ int main(int argc, char* argv[]) {
   }
 
   if (!device->initialize()) {
-    error("failed to initialize device");
-    return 1;
+    fatal("failed to initialize device");
   }
 
   int accessory_fd = device->get_accessory_fd();

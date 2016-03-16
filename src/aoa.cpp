@@ -162,14 +162,12 @@ static void attach_usb_interface(libusb_device_handle* handle, int interface) {
   if (rc == LIBUSB_ERROR_NOT_FOUND) {
     info("no kernel driver was attached to interface %#x", interface);
   } else if (rc != 0) {
-    error("failed to detach kernel driver for interface %#x: %s", interface, libusb_error_name(rc));
-    exit(1);
+    fatal("failed to detach kernel driver for interface %#x: %s", interface, libusb_error_name(rc));
   }
 
   rc = libusb_claim_interface(handle, interface);
   if (rc != 0) {
-    error("failed to claim interface %#x: %s", interface, libusb_error_name(rc));
-    exit(1);
+    fatal("failed to claim interface %#x: %s", interface, libusb_error_name(rc));
   }
 }
 
@@ -322,26 +320,22 @@ bool AOADevice::spawn_accessory_threads() {
 
     if ((endpoint.bEndpointAddress & 0x80) == 0) {
       if (sink != 0) {
-        error("multiple sink endpoints found");
-        exit(1);
+        fatal("multiple sink endpoints found");
       }
 
       if (interface_number != 0 && interface_number != interface.bInterfaceNumber) {
-        error("sink and source on separate interfaces?");
-        exit(1);
+        fatal("sink and source on separate interfaces?");
       }
 
       sink = endpoint.bEndpointAddress;
       interface_number = interface.bInterfaceNumber;
     } else {
       if (source != 0) {
-        error("multiple source endpoints found");
-        exit(1);
+        fatal("multiple source endpoints found");
       }
 
       if (interface_number != 0 && interface_number != interface.bInterfaceNumber) {
-        error("sink and source on separate interfaces?");
-        exit(1);
+        fatal("sink and source on separate interfaces?");
       }
 
       source = endpoint.bEndpointAddress;
@@ -352,16 +346,13 @@ bool AOADevice::spawn_accessory_threads() {
   };
 
   if (!usb_endpoint_iterate(handle, iterate_callback)) {
-    error("failed to iterate across USB endpoints");
-    exit(1);
+    fatal("failed to iterate across USB endpoints");
   }
 
   if (sink == 0) {
-    error("failed to find sink endpoint");
-    exit(0);
+    fatal("failed to find sink endpoint");
   } else if (source == 0) {
-    error("failed to find source endpoint");
-    exit(0);
+    fatal("failed to find source endpoint");
   }
 
   debug("found AoA device endpoints: sink=%#x, source = %#x", sink, source);
@@ -374,19 +365,16 @@ bool AOADevice::spawn_accessory_threads() {
       int transferred;
       int rc = libusb_bulk_transfer(handle, source, buffer, sizeof(buffer), &transferred, 0);
       if (rc != 0) {
-        error("failed to transfer data from AoA endpoint: %s", libusb_error_name(rc));
-        exit(1);
+        fatal("failed to transfer data from AoA endpoint: %s", libusb_error_name(rc));
       }
 
       const char* current = reinterpret_cast<char*>(buffer);
       while (transferred > 0) {
         ssize_t written = write(accessory_internal_fd, current, transferred);
         if (written < 0) {
-          error("write failed: %s", strerror(errno));
-          exit(1);
+          fatal("write failed: %s", strerror(errno));
         } else if (written == 0) {
-          error("write returned EOF");
-          exit(1);
+          fatal("write returned EOF");
         }
 
         current += written;
@@ -400,8 +388,7 @@ bool AOADevice::spawn_accessory_threads() {
       char buffer[16384];
       ssize_t bytes_read = read(accessory_internal_fd, buffer, sizeof(buffer));
       if (bytes_read < 0) {
-        error("read failed: %s", strerror(errno));
-        exit(1);
+        fatal("read failed: %s", strerror(errno));
       }
 
       unsigned char* current = reinterpret_cast<unsigned char*>(buffer);
@@ -409,12 +396,11 @@ bool AOADevice::spawn_accessory_threads() {
         int transferred;
         int rc = libusb_bulk_transfer(handle, sink, current, bytes_read, &transferred, 0);
         if (rc != 0) {
-          error("failed to transfer data to AoA endpoint: %s", libusb_error_name(rc));
-          exit(1);
+          fatal("failed to transfer data to AoA endpoint: %s", libusb_error_name(rc));
         }
 
         if (transferred <= 0) {
-          error("libusb_bulk_transfer transferred %d bytes", transferred);
+          fatal("libusb_bulk_transfer transferred %d bytes", transferred);
         }
 
         current += transferred;
@@ -462,11 +448,9 @@ static void audio_transfer_callback(struct libusb_transfer* transfer) {
       if (bytes > 0) {
         ssize_t rc = writev(userdata->fd, iov, iovs);
         if (rc < 0) {
-          error("failed to write audio: %s", strerror(errno));
-          exit(1);
+          fatal("failed to write audio: %s", strerror(errno));
         } else if (rc == 0) {
-          error("hit EOF while writing audio");
-          exit(1);
+          fatal("hit EOF while writing audio");
         } else if (rc < bytes) {
           error("buffer overrun while writing audio");
         }
@@ -492,8 +476,7 @@ void audio_transfer_enqueue(struct libusb_transfer* transfer) {
     packet_size =
       libusb_get_max_iso_packet_size(libusb_get_device(userdata->handle), userdata->endpoint);
     if (packet_size < 0) {
-      error("failed to get maximum isochronous packet size: %s", libusb_error_name(packet_size));
-      exit(1);
+      fatal("failed to get maximum isochronous packet size: %s", libusb_error_name(packet_size));
     }
     buffer = new unsigned char[AUDIO_PACKET_BUFFER * packet_size]();
   }
@@ -538,8 +521,7 @@ bool AOADevice::spawn_audio_threads() {
       int rc = libusb_set_interface_alt_setting(handle, interface.bInterfaceNumber,
                                                 interface.bAlternateSetting);
       if (rc != 0) {
-        error("failed to set audio source alternate setting: %s", libusb_error_name(rc));
-        exit(1);
+        fatal("failed to set audio source alternate setting: %s", libusb_error_name(rc));
       }
       return usb_endpoint_iterate_result::terminate;
     }
@@ -548,13 +530,11 @@ bool AOADevice::spawn_audio_threads() {
   };
 
   if (!usb_endpoint_iterate(handle, iterate_callback)) {
-    error("failed to iterate across USB endpoints");
-    exit(1);
+    fatal("failed to iterate across USB endpoints");
   }
 
   if (source == 0) {
-    error("failed to find audio source endpoint");
-    exit(0);
+    fatal("failed to find audio source endpoint");
   }
 
   this->audio_read_thread = std::thread([this, source]() {
